@@ -33,7 +33,17 @@ jobs:
         run: |
           ipython notebooks/airquality/2_air_quality_feature_pipeline.ipynb
           ipython notebooks/airquality/4_air_quality_batch_inference.ipynb
+      - name: Check for changes
+        id: git-check
+        run: |
+          if [ -n "$(git status --porcelain docs/air-quality/assets/img/* docs/_includes/* 2>/dev/null)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: github pages publish
+        if: steps.git-check.outputs.changes == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Air Quality Dashboard published"
