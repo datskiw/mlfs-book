@@ -291,7 +291,30 @@ def backfill_predictions_for_monitoring(weather_fg, air_quality_df, monitor_fg, 
     features_df = weather_fg.read()
     features_df = features_df.sort_values(by=['date'], ascending=True)
     features_df = features_df.tail(10)
-    features_df['predicted_pm25'] = model.predict(features_df[['temperature_2m_mean', 'precipitation_sum', 'wind_speed_10m_max', 'wind_direction_10m_dominant']])
+    # Join in the rolling 3-day mean feature used during training, so the model
+    # sees the same feature set as it was trained on.
+    # air_quality_df is expected to contain `pm25_rolling_3d_mean` from the
+    # feature backfill notebook.
+    features_df = pd.merge(
+        features_df,
+        air_quality_df[['date', 'pm25_rolling_3d_mean']],
+        on='date',
+        how='inner'
+    )
+
+    # Predict using the full feature set: pm25_rolling_3d_mean + weather features
+    features_df['predicted_pm25'] = model.predict(
+        features_df[
+            [
+                'pm25_rolling_3d_mean',
+                'temperature_2m_mean',
+                'precipitation_sum',
+                'wind_speed_10m_max',
+                'wind_direction_10m_dominant',
+            ]
+        ]
+    )
+
     df = pd.merge(features_df, air_quality_df[['date','pm25','street','country']], on="date")
     df['days_before_forecast_day'] = 1
     hindcast_df = df
