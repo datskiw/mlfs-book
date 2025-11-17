@@ -288,7 +288,9 @@ def check_file_path(file_path):
         print(f"File successfully found at the path: {file_path}")
 
 def backfill_predictions_for_monitoring(weather_fg, air_quality_df, monitor_fg, model):
-    features_df = weather_fg.read()
+    # Read weather data limited to this sensor's city so we only use matching rows.
+    city = air_quality_df['city'].iloc[0]
+    features_df = weather_fg.filter(weather_fg.city == city).read()
     features_df = features_df.sort_values(by=['date'], ascending=True)
     features_df = features_df.tail(10)
     # Join in the rolling 3-day mean feature used during training, so the model
