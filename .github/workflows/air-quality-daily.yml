@@ -55,7 +55,103 @@ jobs:
           echo "Processing sensor: ${{ matrix.sensor.name }}"
           ipython notebooks/airquality/2_air_quality_feature_pipeline.ipynb
           ipython notebooks/airquality/4_air_quality_batch_inference.ipynb
-      - name: Check for changes
+      - name: Archive sensor dashboard assets
+        run: |
+          SENSOR_SLUG="${{ matrix.sensor.city }}-${{ matrix.sensor.street }}"
+          SENSOR_SLUG=$(echo "$SENSOR_SLUG" | tr '[:upper:] ' '[:lower:]-')
+          mkdir -p "dashboard/${SENSOR_SLUG}"
+          cp docs/air-quality/assets/img/pm25_forecast.png "dashboard/${SENSOR_SLUG}/forecast.png"
+          cp docs/air-quality/assets/img/pm25_hindcast_1day.png "dashboard/${SENSOR_SLUG}/hindcast.png"
+          cat <<EOF > "dashboard/${SENSOR_SLUG}/meta.json"
+          {
+            "slug": "${SENSOR_SLUG}",
+            "name": "${{ matrix.sensor.name }}",
+            "city": "${{ matrix.sensor.city }}",
+            "street": "${{ matrix.sensor.street }}",
+            "country": "${{ matrix.sensor.country }}"
+          }
+          EOF
+          echo "SENSOR_SLUG=${SENSOR_SLUG}" >> $GITHUB_ENV
+      - name: Upload dashboard artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensor-${{ matrix.sensor.name }}
+          path: dashboard/${{ env.SENSOR_SLUG }}
+          include-hidden-files: true
+
+  publish_dashboard:
+    name: Publish dashboard
+    needs: schedule_pipelines
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repo content
+        uses: actions/checkout@v4
+
+      - name: Download sensor artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dashboard
+
+      - name: Build dashboard include
+        run: |
+          python - <<'PY'
+          import json, pathlib, shutil
+
+          dashboard_root = pathlib.Path("dashboard")
+          asset_dir = pathlib.Path("docs/air-quality/assets/img")
+          include_path = pathlib.Path("docs/_includes/air-quality.html")
+          asset_dir.mkdir(parents=True, exist_ok=True)
+
+          panels = []
+          if dashboard_root.exists():
+              for meta_file in dashboard_root.rglob("meta.json"):
+                  meta = json.loads(meta_file.read_text())
+                  slug = meta["slug"]
+                  src_dir = meta_file.parent
+                  forecast_src = src_dir / "forecast.png"
+                  hindcast_src = src_dir / "hindcast.png"
+                  if not forecast_src.exists() or not hindcast_src.exists():
+                      continue
+                  forecast_dst = asset_dir / f"{slug}_pm25_forecast.png"
+                  hindcast_dst = asset_dir / f"{slug}_pm25_hindcast_1day.png"
+                  shutil.move(forecast_src, forecast_dst)
+                  shutil.move(hindcast_src, hindcast_dst)
+                  panels.append({
+                      "title": meta["name"],
+                      "city": meta["city"],
+                      "country": meta["country"],
+                      "forecast_img": f"./assets/img/{forecast_dst.name}",
+                      "hindcast_img": f"./assets/img/{hindcast_dst.name}"
+                  })
+
+          panels.sort(key=lambda p: p["title"].lower())
+
+          if not panels:
+              include_path.write_text("<p>No sensor charts available yet.</p>")
+          else:
+              lines = [
+                  "<style>",
+                  ".sensor-dashboard { margin-bottom: 2rem; }",
+                  ".sensor-panels { display:flex; flex-wrap:wrap; gap:1rem; }",
+                  ".sensor-panels img { width:100%; border:1px solid #eee; }",
+                  "</style>",
+              ]
+              for panel in panels:
+                  lines += [
+                      '<section class="sensor-dashboard">',
+                      f"  <h2>{panel['title']}</h2>",
+                      '  <div class="sensor-panels">',
+                      '    <div class="panel"><h3>Forecast</h3>',
+                      f"      <img src=\"{panel['forecast_img']}\" alt=\"Forecast for {panel['title']}\"></div>",
+                      '    <div class="panel"><h3>1-Day Hindcast</h3>',
+                      f"      <img src=\"{panel['hindcast_img']}\" alt=\"Hindcast for {panel['title']}\"></div>",
+                      '  </div>',
+                      '</section>',
+                  ]
+              include_path.write_text("\n".join(lines))
+          PY
+
+      - name: Check for dashboard changes
         id: git-check
         run: |
           if [ -n "$(git status --porcelain docs/air-quality/assets/img/* docs/_includes/* 2>/dev/null)" ]; then
@@ -70,17 +166,10 @@ jobs:
         with:
           commit_message: "Air Quality Dashboard published"
           commit_options: '--no-verify --signoff'
-
           file_pattern: 'docs/air-quality/assets/img/* docs/_includes/*'
-
           repository: .
-
           status_options: '--untracked-files=no'
-
           skip_dirty_check: true
-
           skip_fetch: true
-
           skip_checkout: true
-
           push_options: '--force'
