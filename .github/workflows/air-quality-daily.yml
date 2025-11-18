@@ -13,17 +13,35 @@ jobs:
     strategy:
       matrix:
         sensor:
-          - name: "st-eriksgatan-83"
-            country: "sweden"
-            city: "stockholm"
-            street: "st-eriksgatan-83"
-            aqicn_url: "https://api.waqi.info/feed/@10523"
+          - name: "klosterhaugen"
+            country: "norway"
+            city: "bergen"
+            street: "klosterhaugen"
+            aqicn_url: "https://api.waqi.info/feed/@12709"
 
-          - name: "klovervagen-ekero"
-            country: "sweden"
-            city: "ekero"
-            street: "klovervagen"
-            aqicn_url: "https://api.waqi.info/feed/A77488"
+          - name: "danmarksplass"
+            country: "norway"
+            city: "bergen"
+            street: "danmarksplass"
+            aqicn_url: "https://api.waqi.info/feed/@2629"
+
+          - name: "loddefjord"
+            country: "norway"
+            city: "bergen"
+            street: "loddefjord"
+            aqicn_url: "https://api.waqi.info/feed/@12708"
+
+          - name: "radal"
+            country: "norway"
+            city: "bergen"
+            street: "radal"
+            aqicn_url: "https://api.waqi.info/feed/@12707"
+
+          - name: "asane"
+            country: "norway"
+            city: "bergen"
+            street: "asane"
+            aqicn_url: "https://api.waqi.info/feed/@12710"
 
     permissions:
       pages: write
@@ -102,11 +120,14 @@ jobs:
           include_path = pathlib.Path("docs/_includes/air-quality.html")
           asset_dir.mkdir(parents=True, exist_ok=True)
 
+          # Collect slugs from current run
+          current_slugs = set()
           panels = []
           if dashboard_root.exists():
               for meta_file in dashboard_root.rglob("meta.json"):
                   meta = json.loads(meta_file.read_text())
                   slug = meta["slug"]
+                  current_slugs.add(slug)
                   src_dir = meta_file.parent
                   forecast_src = src_dir / "forecast.png"
                   hindcast_src = src_dir / "hindcast.png"
@@ -123,6 +144,15 @@ jobs:
                       "forecast_img": f"./assets/img/{forecast_dst.name}",
                       "hindcast_img": f"./assets/img/{hindcast_dst.name}"
                   })
+
+          # Remove old sensor PNGs that aren't in current run
+          if current_slugs:
+              for img_file in asset_dir.glob("*_pm25_*.png"):
+                  # Extract slug from filename (e.g., "stockholm-st-eriksgatan-83_pm25_forecast.png" -> "stockholm-st-eriksgatan-83")
+                  img_slug = img_file.stem.replace("_pm25_forecast", "").replace("_pm25_hindcast_1day", "")
+                  if img_slug not in current_slugs:
+                      img_file.unlink()
+                      print(f"Removed old sensor file: {img_file.name}")
 
           panels.sort(key=lambda p: p["title"].lower())
 
