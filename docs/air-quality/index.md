@@ -1,4 +1,4 @@
-# Air Quality Dashboard
+# Air Quality Dashboard For Bergen, Norway
 
 ![Hopsworks Logo](../titanic/assets/img/logo.png)
 
